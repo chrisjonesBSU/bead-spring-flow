@@ -74,12 +74,12 @@ def main():
     param_names, param_combinations = get_parameters()
     # Create the generate jobs
     for params in param_combinations:
-        parent_statepoint = dict(zip(param_names, params))
-        parent_job = project.open_job(parent_statepoint)
-        parent_job.init()
-        parent_job.doc.setdefault("done", False)
+        statepoint = dict(zip(param_names, params))
+        job = project.open_job(statepoint)
+        job.init()
+        job.doc.setdefault("npt_done", False)
+        job.doc.setdefault("nvt_done", False)
 
-    project.write_statepoints()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -55,16 +55,6 @@ class Fry(DefaultSlurmEnvironment):
 
 # Definition of project-related labels (classification)
 @MyProject.label
-def done(job):
-    return job.doc.get("done")
-
-
-@MyProject.label
-def npt_done(job):
-    return job.doc.npt_done
-
-
-@MyProject.label
 def nvt_done(job):
     return job.doc.nvt_done
 
@@ -81,9 +71,9 @@ def NPT(job):
     import hoomd_polymers
     from hoomd_polymers.systems import Pack
     import hoomd_polymers.forcefields
-    from hoomd_polymers.forcefields import BeadSpring 
+    from hoomd_polymers.forcefields import BeadSpring
     from hoomd_polymers.sim import Simulation
-    from hoomd_polymers.polymers import LJChain 
+    from hoomd_polymers.polymers import LJChain
     from cmeutils.sampling import is_equilibrated, equil_sample
     import numpy as np
 
@@ -94,7 +84,7 @@ def NPT(job):
         print(job.id)
         print("------------------------------------")
         print("------------------------------------")
-        
+
         bead_spring = LJChain(
                 n_mols=job.sp.n_mols,
                 lengths=job.sp.lengths,
@@ -107,20 +97,20 @@ def NPT(job):
                 density=job.sp.density,
                 packing_expand_factor=job.sp.packing_expand_factor
         )
-        
+
         # Set units and create starting snapshot
         length_units = getattr(unyt, job.sp.ref_length["units"])
-        ref_length = job.sp.ref_length["value"] * length_units)
+        ref_length = job.sp.ref_length["value"] * length_units
         job.doc.ref_length = ref_length
         job.doc.ref_length_units = job.sp.ref_length["units"]
 
         mass_units = getattr(unyt, job.sp.ref_mass["units"])
-        ref_mass = job.sp.ref_mass["value"] * mass_units)
+        ref_mass = job.sp.ref_mass["value"] * mass_units
         job.doc.ref_mass = ref_mass
         job.doc.ref_mass_units = job.sp.ref_mass["units"]
 
         energy_units = getattr(unyt, job.sp.ref_mass["energy"])
-        ref_energy = job.sp.ref_energy["value"] * energy_units)
+        ref_energy = job.sp.ref_energy["value"] * energy_units
         job.doc.ref_energy = ref_energy
         job.doc.ref_energy_units = job.sp.ref_energy["units"]
 
@@ -155,7 +145,7 @@ def NPT(job):
                 dihedrals=dihedrals,
                 r_cut=job.sp.r_cut
         )
-                
+
         gsd_path = os.path.join(job.ws, "npt_trajectory.gsd")
         log_path = os.path.join(job.ws, "npt_data.txt")
 
