@@ -1,0 +1,25 @@
+name: bead-spring 
+channels:
+  - conda-forge
+dependencies:
+  - foyer
+  - freud
+  - gsd
+  - hoomd=3.8=*gpu*
+  - jupyter
+  - matplotlib
+  - mbuild
+  - mdanalysis
+  - numpy
+  - pip
+  - pymbar
+  - pytest
+  - pytest-cov
+  - python=3.9
+  - rowan
+  - signac
+  - signac-flow
+  - unyt
+  - pip:
+      - git+https://github.com/cmelab/cmeutils.git@master
+      - git+https://github.com/chrisjonesbsu/hoomd-polymers.git@main
