@@ -32,7 +32,9 @@ def get_parameters():
     parameters["ref_length"] = [dict(value=1, units="nm")]
     parameters["ref_energy"] = [dict(value=1, units="kJ")]
     parameters["ref_mass"] = [dict(value=100, units="amu")]
-    parameters["packing_expand_factor"] = [5]
+    parameters["packing_expand_factor"] = [10]
+    parameters["packing_overlap"] = [0.8]
+    parameters["packing_edge"] = [0.5]
 
     ### FORCEFIELD INFORMATION ###
     parameters["bead_types"] = [

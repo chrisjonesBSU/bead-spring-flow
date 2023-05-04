@@ -96,7 +96,9 @@ def NPT(job):
         system = Pack(
                 molecules=[bead_spring.molecules],
                 density=job.sp.density,
-                packing_expand_factor=job.sp.packing_expand_factor
+                packing_expand_factor=job.sp.packing_expand_factor,
+                edge=job.sp.packing_edge,
+                overlap=job.sp.packing_overlap
         )
 
         # Set units and create starting snapshot
