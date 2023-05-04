@@ -68,13 +68,14 @@ def npt_done(job):
 @MyProject.operation(directives={"ngpu": 1, "executable": "python -u"})
 def NPT(job):
     import hoomd_polymers
-    from hoomd_polymers.systems import Pack
-    import hoomd_polymers.forcefields
+    from hoomd_polymers.library.systems import Pack
     from hoomd_polymers.forcefields import BeadSpring
     from hoomd_polymers.sim import Simulation
-    from hoomd_polymers.polymers import LJChain
+    from hoomd_polymers.library.polymers import LJChain
+
     from cmeutils.sampling import is_equilibrated, equil_sample
     import numpy as np
+    import unyt
 
     with job:
         print("------------------------------------")
@@ -93,7 +94,7 @@ def NPT(job):
                 bond_lengths=job.sp.bond_lengths
         )
         system = Pack(
-                molecule=[bead_spring.molecules],
+                molecules=[bead_spring.molecules],
                 density=job.sp.density,
                 packing_expand_factor=job.sp.packing_expand_factor
         )
@@ -109,7 +110,7 @@ def NPT(job):
         job.doc.ref_mass = ref_mass
         job.doc.ref_mass_units = job.sp.ref_mass["units"]
 
-        energy_units = getattr(unyt, job.sp.ref_mass["energy"])
+        energy_units = getattr(unyt, job.sp.ref_energy["units"])
         ref_energy = job.sp.ref_energy["value"] * energy_units
         job.doc.ref_energy = ref_energy
         job.doc.ref_energy_units = job.sp.ref_energy["units"]
@@ -250,8 +251,10 @@ def NPT(job):
 def NVT(job):
     import hoomd_polymers
     from hoomd_polymers.sim import Simulation
+
     from cmeutils.sampling import is_equilibrated, equil_sample
     import numpy as np
+    import unyt
 
     with job:
         print("------------------------------------")
