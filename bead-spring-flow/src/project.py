@@ -55,7 +55,7 @@ class Fry(DefaultSlurmEnvironment):
 
 # Definition of project-related labels (classification)
 @MyProject.label
-def sampled(job):
+def done(job):
     return job.doc.get("done")
 
 
@@ -67,14 +67,14 @@ def initialized(job):
 @directives(executable="python -u")
 @directives(ngpu=1)
 @MyProject.operation
-@MyProject.post(sampled)
+@MyProject.post(done)
 def sample(job):
     import hoomd_polymers
     from hoomd_polymers.systems import Pack
     import hoomd_polymers.forcefields
-    from hoomd_polymers.forcefields import OPLS_AA_PPS
+    from hoomd_polymers.forcefields import BeadSpring 
     from hoomd_polymers.sim import Simulation
-    from hoomd_polymers.molecules import PPS
+    from hoomd_polymers.polymers import LJChain 
     from cmeutils.sampling import is_equilibrated, equil_sample
     import numpy as np
 
@@ -85,37 +85,71 @@ def sample(job):
         print(job.id)
         print("------------------------------------")
         print("------------------------------------")
-
+        
+        bead_spring = LJChain(
+                n_mols=job.sp.n_mols,
+                lengths=job.sp.lengths,
+                bead_sequence=list(job.sp.bead_sequence),
+                bead_mass=job.sp.bead_mass,
+                bond_lengths=job.sp.bond_lengths
+        )
         system = Pack(
-                molecule=PPS,
+                molecule=[bead_spring.molecules],
                 density=job.sp.density,
-                n_mols=job.sp.n_compounds,
-                mol_kwargs = {
-                    "length": job.sp.chain_lengths,
-                },
-                packing_expand_factor=5
+                packing_expand_factor=job.sp.packing_expand_factor
         )
+        
+        # Set units and create starting snapshot
+        length_units = getattr(unyt, job.sp.ref_length["units"])
+        ref_length = job.sp.ref_length["value"] * length_units)
+        job.doc.ref_length = ref_length
 
-        system.apply_forcefield(
-                forcefield=OPLS_AA_PPS(),
-                make_charge_neutral=True,
-                remove_charges=job.sp.remove_charges,
-                remove_hydrogens=job.sp.remove_hydrogens
+        mass_units = getattr(unyt, job.sp.ref_mass["units"])
+        ref_mass = job.sp.ref_mass["value"] * mass_units)
+        job.doc.ref_mass = ref_mass
+
+        energy_units = getattr(unyt, job.sp.ref_mass["energy"])
+        ref_energy = job.sp.ref_energy["value"] * energy_units)
+        job.doc.ref_energy = ref_energy
+
+        system.reference_length = ref_length
+        system.reference_mass = ref_mass
+        system.reference_energy = ref_energy
+
+        snapshot = system.to_hoomd_snapshot()
+
+        # Set up Forcefield:
+        beads = dict()
+        bonds = dict()
+        angles = dict()
+        dihedrals = dict()
+
+        for bead in job.sp.bead_types:
+            beads[bead] = job.sp.bead_types[bead]
+
+        for bond in job.sp.bond_types:
+            bonds[bond] = job.sp.bond_types[bond]
+
+        for angle in job.sp.angle_types:
+            angles[angle] = job.sp.angle_types[angle]
+
+        for dih in job.sp.dihedral_types:
+            dihedrals[dih] = job.sp.dihedral_types[dih]
+
+        bead_spring_ff = BeadSpring(
+                beads=beads,
+                bonds=bonds,
+                angle=angles,
+                dihedrals=dihedrals,
+                r_cut=job.sp.r_cut
         )
-
-        job.doc.ref_distance = system.reference_distance
-        job.doc.ref_distance_units = "angstrom"
-        job.doc.ref_mass = system.reference_mass
-        job.doc.ref_mass_units = "amu"
-        job.doc.ref_energy = system.reference_energy
-        job.doc.ref_energy_units = "kcal/mol"
-
+                
         gsd_path = os.path.join(job.ws, "trajectory.gsd")
         log_path = os.path.join(job.ws, "sim_data.txt")
 
         sim = Simulation(
-            initial_state=system.hoomd_snapshot,
-            forcefield=system.hoomd_forcefield,
+            initial_state=snapshot,
+            forcefield=bead_spring_ff.hoomd_forcefield,
             dt=job.sp.dt,
             gsd_write_freq=job.sp.gsd_write_freq,
             gsd_file_name=gsd_path,
@@ -132,6 +166,7 @@ def sample(job):
         job.doc.target_box = target_box
         job.doc.real_timestep = sim.real_timestep.to("fs")
         job.doc.real_timestep_units = "fs"
+
         print("----------------------")
         print("Running shrink step...")
         print("----------------------")
@@ -192,44 +227,6 @@ def sample(job):
         print("-------------------------------------")
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
-        sim.save_restart_gsd(job.fn("restart.gsd"))
-        # Log volume
-        uncorr_sample, uncorr_indices, prod_start, Neff = equil_sample(
-                volume[job.doc.shrink_cut:],
-                threshold_fraction=0.50,
-                threshold_neff=job.sp.neff_samples
-        )
-        np.savetxt("vol_sample_indices.txt", uncorr_indices)
-        np.savetxt("volume.txt", uncorr_sample)
-        # Save volume results in the job doc
-        job.doc.vol_start = prod_start
-        job.doc.average_vol = np.mean(uncorr_sample)
-        job.doc.vol_std = np.std(uncorr_sample)
-        job.doc.vol_sem = np.std(uncorr_sample)/(len(uncorr_sample)**0.5)
-        # Log potential energy
-        uncorr_sample, uncorr_indices, prod_start, Neff = equil_sample(
-                pe[job.doc.shrink_cut:],
-                threshold_fraction=0.50,
-                threshold_neff=job.sp.neff_samples
-        )
-        np.savetxt("pe_sample_indices.txt", uncorr_indices)
-        np.savetxt("potential_energy.txt", uncorr_sample)
-        # Save potential energy results in the job doc
-        job.doc.pe_start = prod_start
-        job.doc.average_pe = np.mean(uncorr_sample)
-        job.doc.pe_std = np.std(uncorr_sample)
-        job.doc.pe_sem = np.std(uncorr_sample)/(len(uncorr_sample)**0.5)
-        # Add a few more things to the job job
-        job.doc.total_mass = sim.mass.to("g")
-        job.doc.total_mass_units = "g"
-        job.doc.total_steps = job.sp.n_steps + (extra_runs*job.sp.extra_steps)
-        job.doc.total_time = job.doc.total_steps*job.doc.real_timestep*1e-6
-        job.doc.total_time_units = "ns"
-        job.doc.extra_runs = extra_runs
-        job.doc.box_nm = sim.box_lengths.to("nm")
-        job.doc.box_cm = sim.box_lengths.to("cm")
-        job.doc.done = True
-        job.doc.sampled = True
 
 
 if __name__ == "__main__":

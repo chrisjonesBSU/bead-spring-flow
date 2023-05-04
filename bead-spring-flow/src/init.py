@@ -12,6 +12,7 @@ The result of running this file is the creation of a signac workspace:
 """
 
 import signac
+import flow
 import logging
 from collections import OrderedDict
 from itertools import product
@@ -22,35 +23,45 @@ def get_parameters():
     parameters = OrderedDict()
 
     ### SYSTEM GENERATION PARAMETERS ###
-    parameters["density"] = [1.0]
     parameters["chain_lengths"] = [15]
     parameters["n_compounds"] = [60]
-    parameters["remove_hydrogens"] = [
-            #True,
-            False
+    parameters["bead_sequence"] = ["A"]
+    parameters["bond_lengths"] = [{"A-A": 0.5}] # nm
+    parameters["bead_mass"] = [{"A": 100}]
+    parameters["density"] = [1.0]
+    parameters["ref_length"] = [dict(value=1, units="nm")]
+    parameters["ref_energy"] = [dict(value=1, units="kJ")]
+    parameters["ref_mass"] = [dict(value=100, units="amu")]
+
+    ### FORCEFIELD INFORMATION ###
+    parameters["bead_types"] = [
+            [{"A": {"sigma": 1.0, "epsilon": 1.0}}],
     ]
-    parameters["remove_charges"] = [
-            #True,
-            False
+    parameters["bond_types"] = [
+            [{"A-A": {"k": 500, "r0":0.5}}],
+    ]
+    parameters["angle_types"] = [
+            [{"A-A-A": {"k": 100, "t0":2.2}}],
+    ]
+    parameters["dihedral_types"] = [
+            [{}],
     ]
 
     ### SIMULATION PARAMETERS ###
-    parameters["tau_kt"] = [0.1]
-    parameters["tau_pressure"] = [0.1]
-    parameters["dt"] = [0.0001]
+    parameters["tau_kt"] = [0.05]
+    parameters["tau_pressure"] = [0.5]
+    parameters["dt"] = [0.0005]
     parameters["r_cut"] = [2.5]
     parameters["sim_seed"] = [42]
-    parameters["shrink_steps"] = [3e7]
-    parameters["shrink_period"] = [100000]
-    parameters["shrink_kT"] = [8.0]
-    parameters["gsd_write_freq"] = [200000]
-    parameters["log_write_freq"] = [10000]
+    parameters["shrink_steps"] = [5e6]
+    parameters["shrink_period"] = [10000]
+    parameters["shrink_kT"] = [3.0]
+    parameters["gsd_write_freq"] = [int(5e4)]
+    parameters["log_write_freq"] = [int(5e3)]
 
     ### Quench related parameters ###
     parameters["kT"] = [1.4]
-    parameters["pressure"] = [
-            0.015, 0.05, 0.1, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0
-    ]
+    parameters["pressure"] = [None]
     parameters["n_steps"] = [1e7]
     parameters["extra_steps"] = [5e6]
     parameters["neff_samples"] = [5000]
@@ -58,7 +69,7 @@ def get_parameters():
 
 
 def main():
-    project = signac.init_project("pps") # Set the signac project name
+    project = signac.init_project() # Set the signac project name
     param_names, param_combinations = get_parameters()
     # Create the generate jobs
     for params in param_combinations:
