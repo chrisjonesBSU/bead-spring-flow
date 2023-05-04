@@ -58,15 +58,14 @@ class Fry(DefaultSlurmEnvironment):
 def nvt_done(job):
     return job.doc.nvt_done
 
+
 @MyProject.label
-def initialized(job):
-    pass
+def npt_done(job):
+    return job.doc.npt_done
 
 
-@directives(executable="python -u")
-@directives(ngpu=1)
-@MyProject.operation
 @MyProject.post(npt_done)
+@MyProject.operation(directives={"ngpu": 1, "executable": "python -u"})
 def NPT(job):
     import hoomd_polymers
     from hoomd_polymers.systems import Pack
@@ -79,6 +78,7 @@ def NPT(job):
 
     with job:
         print("------------------------------------")
+        print("Running NPT Simulation...")
         print("------------------------------------")
         print("JOB ID NUMBER:")
         print(job.id)
@@ -241,13 +241,12 @@ def NPT(job):
         job.doc.npt_box_edge = average_box_edge
         sim.save_restart_gsd(job.fn("restart_npt.gsd"))
         job.doc.npt_done = True
+        print("Simulation complieted...")
 
 
-@directives(executable="python -u")
-@directives(ngpu=1)
-@MyProject.operation
 @MyProject.pre(npt_done)
 @MyProject.post(nvt_done)
+@MyProject.operation(directives={"ngpu": 1, "executable": "python -u"})
 def NVT(job):
     import hoomd_polymers
     from hoomd_polymers.sim import Simulation
@@ -256,6 +255,7 @@ def NVT(job):
 
     with job:
         print("------------------------------------")
+        print("Running NVT Simulation...")
         print("------------------------------------")
         print("JOB ID NUMBER:")
         print(job.id)
@@ -345,6 +345,7 @@ def NVT(job):
         # Save restart.gsd
         sim.save_restart_gsd(job.fn("restart_nvt.gsd"))
         job.doc.nvt_done = True
+        print("Simulation complieted...")
 
 
 if __name__ == "__main__":
