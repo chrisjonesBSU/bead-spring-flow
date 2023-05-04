@@ -147,8 +147,8 @@ def NPT(job):
                 r_cut=job.sp.r_cut
         )
 
-        gsd_path = os.path.join(job.ws, "npt_trajectory.gsd")
-        log_path = os.path.join(job.ws, "npt_data.txt")
+        gsd_path = os.path.join(job.path, "npt_trajectory.gsd")
+        log_path = os.path.join(job.path, "npt_data.txt")
 
         sim = Simulation(
             initial_state=snapshot,
@@ -165,7 +165,7 @@ def NPT(job):
         sim.reference_mass = system.reference_mass
         sim.reference_energy = system.reference_energy
 
-        target_box = system.target_box/job.doc.ref_distance
+        target_box = system.target_box/job.doc.ref_length
         job.doc.target_box = target_box
         job.doc.real_timestep = sim.real_timestep.to("fs")
         job.doc.real_timestep_units = "fs"
@@ -271,8 +271,8 @@ def NVT(job):
         with gsd.hoomd.open(job.fn("restart_npt.gsd"), "rb") as traj:
             snapshot = traj[-1]
 
-        gsd_path = os.path.join(job.ws, "nvt_trajectory.gsd")
-        log_path = os.path.join(job.ws, "nvt_data.txt")
+        gsd_path = os.path.join(job.path, "nvt_trajectory.gsd")
+        log_path = os.path.join(job.path, "nvt_data.txt")
 
         sim = Simulation(
             initial_state=snapshot,
