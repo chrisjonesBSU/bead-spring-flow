@@ -60,6 +60,15 @@ def done(job):
 
 
 @MyProject.label
+def npt_done(job):
+    return job.doc.npt_done
+
+
+@MyProject.label
+def nvt_done(job):
+    return job.doc.nvt_done
+
+@MyProject.label
 def initialized(job):
     pass
 
@@ -67,8 +76,8 @@ def initialized(job):
 @directives(executable="python -u")
 @directives(ngpu=1)
 @MyProject.operation
-@MyProject.post(done)
-def sample(job):
+@MyProject.post(npt_done)
+def NPT(job):
     import hoomd_polymers
     from hoomd_polymers.systems import Pack
     import hoomd_polymers.forcefields
@@ -89,7 +98,7 @@ def sample(job):
         bead_spring = LJChain(
                 n_mols=job.sp.n_mols,
                 lengths=job.sp.lengths,
-                bead_sequence=list(job.sp.bead_sequence),
+                bead_sequence=job.sp.bead_sequence,
                 bead_mass=job.sp.bead_mass,
                 bond_lengths=job.sp.bond_lengths
         )
@@ -103,14 +112,17 @@ def sample(job):
         length_units = getattr(unyt, job.sp.ref_length["units"])
         ref_length = job.sp.ref_length["value"] * length_units)
         job.doc.ref_length = ref_length
+        job.doc.ref_length_units = job.sp.ref_length["units"]
 
         mass_units = getattr(unyt, job.sp.ref_mass["units"])
         ref_mass = job.sp.ref_mass["value"] * mass_units)
         job.doc.ref_mass = ref_mass
+        job.doc.ref_mass_units = job.sp.ref_mass["units"]
 
         energy_units = getattr(unyt, job.sp.ref_mass["energy"])
         ref_energy = job.sp.ref_energy["value"] * energy_units)
         job.doc.ref_energy = ref_energy
+        job.doc.ref_energy_units = job.sp.ref_energy["units"]
 
         system.reference_length = ref_length
         system.reference_mass = ref_mass
@@ -144,8 +156,8 @@ def sample(job):
                 r_cut=job.sp.r_cut
         )
                 
-        gsd_path = os.path.join(job.ws, "trajectory.gsd")
-        log_path = os.path.join(job.ws, "sim_data.txt")
+        gsd_path = os.path.join(job.ws, "npt_trajectory.gsd")
+        log_path = os.path.join(job.ws, "npt_data.txt")
 
         sim = Simulation(
             initial_state=snapshot,
@@ -162,7 +174,7 @@ def sample(job):
         sim.reference_mass = system.reference_mass
         sim.reference_energy = system.reference_energy
 
-        target_box = system.target_box*10/job.doc.ref_distance
+        target_box = system.target_box/job.doc.ref_distance
         job.doc.target_box = target_box
         job.doc.real_timestep = sim.real_timestep.to("fs")
         job.doc.real_timestep_units = "fs"
@@ -198,18 +210,18 @@ def sample(job):
         equilibrated = False
         while not equilibrated:
         # Open up log file, see if pressure and PE are equilibrated
-            data = np.genfromtxt(job.fn("sim_data.txt"), names=True)
+            data = np.genfromtxt(job.fn("npt_data.txt"), names=True)
             volume = data["mdcomputeThermodynamicQuantitiesvolume"]
             pe = data["mdcomputeThermodynamicQuantitiespotential_energy"]
             volume_eq = is_equilibrated(
                     volume[job.doc.shrink_cut+1:],
                     threshold_neff=job.sp.neff_samples,
-                    threshold_fraction=0.50,
+                    threshold_fraction=job.sp.eq_threshold,
             )[0]
             pe_eq = is_equilibrated(
                     pe[job.doc.shrink_cut:],
                     threshold_neff=job.sp.neff_samples,
-                    threshold_fraction=0.50,
+                    threshold_fraction=job.sp.eq_threshold,
             )[0]
             equilibrated = all([volume_eq, pe_eq])
             print("-----------------------------------------------------")
@@ -223,10 +235,126 @@ def sample(job):
                     tau_pressure=job.sp.tau_pressure
             )
             extra_runs += 1
-
         print("-------------------------------------")
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
+        # Find averaged density:
+        uncorr_sample, uncorr_indices, prod_start, Neff = equil_sample(
+                volume[job.doc.shrink_cut:],
+                threshold_fraction=job.sp.eq_threshold,
+                threshold_neff=job.sp.neff_samples
+        )
+        np.savetxt("volume.txt", uncorr_sample)
+        average_volume = np.mean(uncorr_sample)
+        average_box_edge = average_volume**(1/3)
+        job.doc.npt_vol = average_volume
+        job.doc.npt_box_edge = average_box_edge
+        sim.save_restart_gsd(job.fn("restart_npt.gsd"))
+        job.doc.npt_done = True
+
+
+@directives(executable="python -u")
+@directives(ngpu=1)
+@MyProject.operation
+@MyProject.pre(npt_done)
+@MyProject.post(nvt_done)
+def NVT(job):
+    import hoomd_polymers
+    from hoomd_polymers.sim import Simulation
+    from cmeutils.sampling import is_equilibrated, equil_sample
+    import numpy as np
+
+    with job:
+        print("------------------------------------")
+        print("------------------------------------")
+        print("JOB ID NUMBER:")
+        print(job.id)
+        print("------------------------------------")
+        print("------------------------------------")
+        # Load FF from pickle
+        with open(job.fn("forcefield.pickle")) as f:
+            hoomd_ff = pickle.load(f)
+
+        with gsd.hoomd.open(job.fn("restart_npt.gsd"), "rb") as traj:
+            snapshot = traj[-1]
+
+        gsd_path = os.path.join(job.ws, "nvt_trajectory.gsd")
+        log_path = os.path.join(job.ws, "nvt_data.txt")
+
+        sim = Simulation(
+            initial_state=snapshot,
+            forcefield=hoomd_ff,
+            dt=job.sp.dt,
+            gsd_write_freq=job.sp.gsd_write_freq,
+            gsd_file_name=gsd_path,
+            log_file_name=log_path,
+            log_write_freq=job.sp.log_write_freq
+        )
+        # Change box to average volume from NPT run
+        target_box = [job.doc.npt_box_edge]*3
+        sim.run_update_volume(
+                final_box_lengths=target_box,
+                n_steps=2e6,
+                period=1,
+                tau_kt=job.sp.tau_kt,
+                kT=job.sp.kT
+        )
+        # Run NVT
+        sim.run_NVT(
+                kT=job.sp.kT, n_steps=job.sp.n_steps, tau_kt=job.sp.tau_kt,
+        )
+
+        shrink_cut = int(2e6/job.sp.log_write_freq)
+        extra_runs = 0
+        equilibrated = False
+        while not equilibrated:
+        # Open up log file, see if pressure and PE are equilibrated
+            data = np.genfromtxt(job.fn("nvt_data.txt"), names=True)
+            pressure = data["mdcomputeThermodynamicQuantitiespressure"]
+            pe = data["mdcomputeThermodynamicQuantitiespotential_energy"]
+            pressure_eq = is_equilibrated(
+                    pressure[shrink_cut+1:],
+                    threshold_neff=job.sp.neff_samples,
+                    threshold_fraction=job.sp.eq_threshold,
+            )[0]
+            pe_eq = is_equilibrated(
+                    pe[shrink_cut:],
+                    threshold_neff=job.sp.neff_samples,
+                    threshold_fraction=job.sp.eq_threshold,
+            )[0]
+            equilibrated = all([pressure_eq, pe_eq])
+            print("-----------------------------------------------------")
+            print(f"Not yet equilibrated. Starting run {extra_runs + 1}.")
+            print("-----------------------------------------------------")
+            sim.run_NVT(
+                    kT=job.sp.kT, n_steps=job.sp.extra_steps, tau_kt=job.sp.tau_kt,
+            )
+            extra_runs += 1
+        print("-------------------------------------")
+        print("Is equilibrated; starting sampling...")
+        print("-------------------------------------")
+        # Find averaged pressure:
+        uncorr_sample, uncorr_indices, prod_start, Neff = equil_sample(
+                pressure[shrink_cut:],
+                threshold_fraction=job.sp.eq_threshold,
+                threshold_neff=job.sp.neff_samples
+        )
+        np.savetxt("pressure.txt", uncorr_sample)
+        average_pressure = np.mean(uncorr_sample)
+        pressure_std = np.std(uncorr_sample)
+        job.doc.average_pressure = average_pressure
+        job.doc.pressure_std = pressure_std
+        # Sample PE
+        uncorr_sample, uncorr_indices, prod_start, Neff = equil_sample(
+                pe[shrink_cut:],
+                threshold_fraction=job.sp.eq_threshold,
+                threshold_neff=job.sp.neff_samples
+        )
+        np.savetxt("potential_energy.txt", uncorr_sample)
+
+        # Save restart.gsd
+        sim.save_restart_gsd(job.fn("restart_nvt.gsd"))
+        job.doc.nvt_done = True
 
 
 if __name__ == "__main__":

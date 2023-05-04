@@ -23,15 +23,16 @@ def get_parameters():
     parameters = OrderedDict()
 
     ### SYSTEM GENERATION PARAMETERS ###
-    parameters["chain_lengths"] = [15]
-    parameters["n_compounds"] = [60]
-    parameters["bead_sequence"] = ["A"]
+    parameters["lengths"] = [15]
+    parameters["n_mols"] = [60]
+    parameters["bead_sequence"] = [["A"]]
     parameters["bond_lengths"] = [{"A-A": 0.5}] # nm
     parameters["bead_mass"] = [{"A": 100}]
     parameters["density"] = [1.0]
     parameters["ref_length"] = [dict(value=1, units="nm")]
     parameters["ref_energy"] = [dict(value=1, units="kJ")]
     parameters["ref_mass"] = [dict(value=100, units="amu")]
+    parameters["packing_expand_factor"] = [5]
 
     ### FORCEFIELD INFORMATION ###
     parameters["bead_types"] = [
