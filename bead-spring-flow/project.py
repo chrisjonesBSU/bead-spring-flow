@@ -127,22 +127,22 @@ def NPT(job):
         angles = dict()
         dihedrals = dict()
 
-        for bead in job.sp.bead_types:
-            beads[bead] = job.sp.bead_types[bead]
+        for bead in job.sp.bead_types[0]:
+            beads[bead] = job.sp.bead_types[0][bead]
 
-        for bond in job.sp.bond_types:
-            bonds[bond] = job.sp.bond_types[bond]
+        for bond in job.sp.bond_types[0]:
+            bonds[bond] = job.sp.bond_types[0][bond]
 
-        for angle in job.sp.angle_types:
-            angles[angle] = job.sp.angle_types[angle]
+        for angle in job.sp.angle_types[0]:
+            angles[angle] = job.sp.angle_types[0][angle]
 
-        for dih in job.sp.dihedral_types:
-            dihedrals[dih] = job.sp.dihedral_types[dih]
+        for dih in job.sp.dihedral_types[0]:
+            dihedrals[dih] = job.sp.dihedral_types[0][dih]
 
         bead_spring_ff = BeadSpring(
                 beads=beads,
                 bonds=bonds,
-                angle=angles,
+                angles=angles,
                 dihedrals=dihedrals,
                 r_cut=job.sp.r_cut
         )
@@ -161,7 +161,7 @@ def NPT(job):
         )
         sim.pickle_forcefield(job.fn("forcefield.pickle"))
 
-        sim.reference_distance = system.reference_distance
+        sim.reference_length = system.reference_length
         sim.reference_mass = system.reference_mass
         sim.reference_energy = system.reference_energy
 
