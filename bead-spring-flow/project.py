@@ -9,6 +9,7 @@ import signac
 from flow import FlowProject, directives
 from flow.environment import DefaultSlurmEnvironment
 import os
+import pickle
 
 
 class MyProject(FlowProject):
@@ -242,6 +243,7 @@ def NPT(job):
 @MyProject.post(nvt_done)
 @MyProject.operation(directives={"ngpu": 1, "executable": "python -u"})
 def NVT(job):
+    import gsd.hoomd
     import hoomd_polymers
     from hoomd_polymers.sim import Simulation
     from cmeutils.sampling import is_equilibrated, equil_sample
@@ -257,8 +259,8 @@ def NVT(job):
         print("------------------------------------")
         print("------------------------------------")
         # Load FF from pickle
-        with open(job.fn("forcefield.pickle")) as f:
-            hoomd_ff = pickle.load(f)
+        f = open(job.fn("forcefield.pickle"), "rb")
+        hoomd_ff = pickle.load(f)
 
         with gsd.hoomd.open(job.fn("restart_npt.gsd"), "rb") as traj:
             snapshot = traj[-1]
