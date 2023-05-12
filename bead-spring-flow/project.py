@@ -205,7 +205,13 @@ def NPT(job):
         extra_runs = 0
         equilibrated = False
         while not equilibrated:
-            equilibrated = check_equilibration(job, "sim_data.txt", "volume") 
+            equilibrated = check_equilibration(
+                    job=job,
+                    filename="npt_data.txt",
+                    variable="volume",
+                    threshold_fraction=job.sp.eq_threshold,
+                    threshold_neff=job.sp.neff_samples
+            )
             print("-----------------------------------------------------")
             print(f"Not yet equilibrated. Starting run {extra_runs + 1}.")
             print("-----------------------------------------------------")
@@ -221,11 +227,11 @@ def NPT(job):
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
         # Find averaged density:
-        sample_job(job=job, filename="sim_data.txt", variable="volume")
-        eq_vol = get_sample(job=job, filename="sim_data.txt", variable="volume")
+        sample_job(job=job, filename="npt_data.txt", variable="volume")
+        eq_vol = get_sample(job=job, filename="npt_data.txt", variable="volume")
         job.doc.average_vol = np.mean(eq_vol)
         job.doc.vol_std = np.std(eq_vol)
-        average_box_edge = job.doc.average_volume**(1/3)
+        average_box_edge = job.doc.average_vol**(1/3)
         job.doc.npt_box_edge = average_box_edge
         sim.save_restart_gsd(job.fn("restart_npt.gsd"))
         job.doc.npt_done = True
@@ -287,7 +293,13 @@ def NVT(job):
         extra_runs = 0
         equilibrated = False
         while not equilibrated:
-            equilibrated = check_equilibration(job, "sim_data.txt", "potential") 
+            equilibrated = check_equilibration(
+                    job=job,
+                    filename="nvt_data.txt",
+                    variable="potential",
+                    threshold_fraction=job.sp.eq_threshold,
+                    threshold_neff=job.sp.neff_samples
+            )
             print("-----------------------------------------------------")
             print(f"Not yet equilibrated. Starting run {extra_runs + 1}.")
             print("-----------------------------------------------------")
@@ -299,8 +311,10 @@ def NVT(job):
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
         # Find averaged density:
-        sample_job(job=job, filename="sim_data.txt", variable="potential")
-        eq_pe = get_sample(job=job, filename="sim_data.txt", variable="potential")
+        sample_job(job=job, filename="nvt_data.txt", variable="potential")
+        eq_pe = get_sample(
+                job=job, filename="nvt_data.txt", variable="potential"
+        )
         job.doc.average_pe = np.mean(eq_pe)
         job.doc.pe_std = np.std(eq_pe)
 
