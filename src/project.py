@@ -177,7 +177,7 @@ def NPT(job):
         else:
             print("Creating new system...")
             system = new_system(job)
-            snapshot = system.hoomd_snapshot
+            snapshot = system.to_hoomd_snapshot()
             pressure = job.sp.pressure
             shrink_steps = job.sp.shrink_steps
 
@@ -323,7 +323,7 @@ def NVT(job):
         else:
             print("Creating new system...")
             system = new_system(job)
-            snapshot = system.hoomd_snapshot
+            snapshot = system.to_hoomd_snapshot()
             target_box = system.target_box/job.doc.ref_length
             shrink_steps = job.sp.shrink_steps
 
