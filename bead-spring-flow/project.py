@@ -165,10 +165,10 @@ def NPT(job):
             with gsd.hoomd.open("restart_npt.gsd") as traj:
                 snapshot = traj[-1]
             pressure = job.sp.pressure
+            shrink_steps = 0
             #TODO: How to handle n_steps for restart job?
-            #TODO: Make sure shrinking is finished?
 
-        if job.isfile("restart_nvt.gsd"):
+        elif job.isfile("restart_nvt.gsd"):
             print("Restarting from NVT trajectory...")
             with gsd.hoomd.open("restart_nvt.gsd") as traj:
                 snapshot = traj[-1]
@@ -186,26 +186,26 @@ def NPT(job):
         else:
             hoomd_ff = new_forcefield(job)
 
-        gsd_path = os.path.join(job.path, "npt_trajectory.gsd")
-        log_path = os.path.join(job.path, "npt_data.txt")
+        gsd_path = job.fn("npt.gsd")
+        log_path = job.fn("npt.txt")
 
         sim = Simulation(
             initial_state=snapshot,
             forcefield=hoomd_ff,
             dt=job.sp.dt,
-            gsd_write_freq=job.sp.gsd_write_freq,
             gsd_file_name=gsd_path,
             log_file_name=log_path,
+            gsd_write_freq=job.sp.gsd_write_freq,
             log_write_freq=job.sp.log_write_freq
         )
         sim.pickle_forcefield(job.fn("forcefield.pickle"))
+        job.doc.tau_p = job.sp.tau_p * sim.dt
+        job.doc.tau_kT = job.sp.tau_kT * sim.dt
 
         sim.reference_length = system.reference_length
         sim.reference_mass = system.reference_mass
         sim.reference_energy = system.reference_energy
 
-        target_box = system.target_box/job.doc.ref_length
-        job.doc.target_box = target_box
         job.doc.real_timestep = sim.real_timestep.to("fs")
         job.doc.real_timestep_units = "fs"
 
@@ -214,6 +214,8 @@ def NPT(job):
         print("----------------------")
         if shrink_steps:
             print("Running update volume method...")
+            target_box = system.target_box/job.doc.ref_length
+            job.doc.target_box = target_box
             kT_ramp = sim.temperature_ramp(
                     n_steps=job.sp.shrink_steps,
                     kT_start=job.sp.shrink_kT,
@@ -223,10 +225,10 @@ def NPT(job):
                     final_box_lengths=target_box,
                     n_steps=job.sp.shrink_steps,
                     period=job.sp.shrink_period,
-                    tau_kt=sim.dt*job.sp.tau_kT,
+                    tau_kt=job.doc.tau_kT,
                     kT=kT_ramp
             )
-            job.doc.shrink_done = True
+            job.doc.shrink_npt_done = True
             print("Update volume run finished...")
 
         print("Running NPT method...")
@@ -234,8 +236,8 @@ def NPT(job):
                 kT=job.sp.kT,
                 pressure=pressure,
                 n_steps=0,
-                tau_kt=sim.dt*job.sp.tau_kT,
-                tau_pressure=sim.dt*job.sp.tau_p
+                tau_kt=job.doc.tau_kT,
+                tau_pressure=job.doc.tau_p
         )
         sim.method.thermalize_thermostat_and_barostat_dof()
 
@@ -243,8 +245,8 @@ def NPT(job):
                 kT=job.sp.kT,
                 pressure=pressure,
                 n_steps=job.sp.n_steps,
-                tau_kt=sim.dt*job.sp.tau_kT,
-                tau_pressure=sim.dt*job.sp.tau_p
+                tau_kt=job.doc.tau_kT,
+                tau_pressure=job.doc.tau_p
         )
 
         shrink_cut = int(shrink_steps/job.sp.log_write_freq)
@@ -253,7 +255,7 @@ def NPT(job):
         while not equilibrated:
             equilibrated = check_equilibration(
                     job=job,
-                    filename="npt_data.txt",
+                    filename="npt.txt",
                     variable="volume",
                     threshold_fraction=job.sp.eq_threshold,
                     threshold_neff=job.sp.neff_samples
@@ -265,16 +267,16 @@ def NPT(job):
                     kT=job.sp.kT,
                     pressure=pressure,
                     n_steps=job.sp.extra_steps,
-                    tau_kt=sim.dt*job.sp.tau_kT,
-                    tau_pressure=sim.dt*job.sp.tau_p
+                    tau_kt=job.doc.tau_kT,
+                    tau_pressure=job.doc.tau_p
             )
             extra_runs += 1
         print("-------------------------------------")
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
-        sample_job(job=job, filename="npt_data.txt", variable="volume")
+        sample_job(job=job, filename="npt.txt", variable="volume")
         eq_volume = get_sample(
-                job=job, filename="npt_data.txt", variable="volume"
+                job=job, filename="npt.txt", variable="volume"
         )
         job.doc.avg_vol = np.mean(eq_volume)
         job.doc.vol_std = np.std(eq_volume)
@@ -283,7 +285,6 @@ def NPT(job):
     print("Simulation completed...")
 
 
-@MyProject.pre(npt_done)
 @MyProject.post(nvt_done)
 @MyProject.operation(
         directives={"ngpu": 1, "executable": "python -u"},
@@ -307,6 +308,7 @@ def NVT(job):
         print(job.id)
         print("------------------------------------")
         print("------------------------------------")
+        #TODO: If both restarts exist?
         if job.isfile("restart_npt.gsd"):
             print("Restarting from NPT trajectory...")
             with gsd.hoomd.open("restart_npt.gsd") as traj:
@@ -319,7 +321,6 @@ def NVT(job):
                 snapshot = traj[-1]
             shrink_steps = 0
             #TODO: How to handle n_steps for restart job?
-
         else:
             print("Creating new system...")
             snapshot = new_system(job)
@@ -332,8 +333,8 @@ def NVT(job):
         else:
             hoomd_ff = new_forcefield(job)
 
-        gsd_path = os.path.join(job.path, "nvt_trajectory.gsd")
-        log_path = os.path.join(job.path, "nvt_data.txt")
+        gsd_path = job.fn("nvt.gsd")
+        log_path = job.fn("nvt.txt")
 
         sim = Simulation(
             initial_state=snapshot,
@@ -345,13 +346,14 @@ def NVT(job):
             log_write_freq=job.sp.log_write_freq
         )
         sim.pickle_forcefield(job.fn("forcefield.pickle"))
+        job.doc.tau_kT = job.sp.tau_kT * sim.dt
 
         if shrink_steps:
             sim.run_update_volume(
                     final_box_lengths=target_box,
                     n_steps=shrink_steps,
                     period=1,
-                    tau_kt=job.sp.dt * job.sp.tau_kT,
+                    tau_kt=job.doc.tau_kT,
                     kT=job.sp.kT
             )
             job.doc.nvt_update_vol = True
@@ -359,7 +361,7 @@ def NVT(job):
         sim.run_NVT(
                 kT=job.sp.kT,
                 n_steps=job.sp.n_steps,
-                tau_kt=job.sp.dt*job.sp.tau_kT,
+                tau_kt=job.doc.tau_kT,
         )
 
         shrink_cut = int(shrink_steps/job.sp.log_write_freq)
@@ -368,7 +370,7 @@ def NVT(job):
         while not equilibrated:
             equilibrated = check_equilibration(
                     job=job,
-                    filename="nvt_data.txt",
+                    filename="nvt.txt",
                     variable="potential",
                     threshold_fraction=job.sp.eq_threshold,
                     threshold_neff=job.sp.neff_samples
@@ -379,15 +381,15 @@ def NVT(job):
             sim.run_NVT(
                     kT=job.sp.kT,
                     n_steps=job.sp.extra_steps,
-                    tau_kt=sim.dt*job.sp.tau_kT,
+                    tau_kt=job.doc.tau_kT,
             )
             extra_runs += 1
         print("-------------------------------------")
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
-        sample_job(job=job, filename="nvt_data.txt", variable="potential")
+        sample_job(job=job, filename="nvt.txt", variable="potential")
         eq_pe = get_sample(
-                job=job, filename="nvt_data.txt", variable="potential"
+                job=job, filename="nvt.txt", variable="potential"
         )
         job.doc.average_pe = np.mean(eq_pe)
         job.doc.pe_std = np.std(eq_pe)
