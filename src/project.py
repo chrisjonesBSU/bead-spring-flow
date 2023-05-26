@@ -5,11 +5,23 @@ status, execute operations and submit them to a cluster. See also:
 
     $ python src/project.py --help
 """
-import signac
-from flow import FlowProject, directives
-from flow.environment import DefaultSlurmEnvironment
 import os
 import pickle
+
+from cmeutils.signac_utils import (
+        check_equilibration, sample_job, get_sample
+)
+from flow import FlowProject, directives
+from flow.environment import DefaultSlurmEnvironment
+import gsd.hoomd
+import hoomd_polymers
+from hoomd_polymers.library.systems import Pack
+from hoomd_polymers.forcefields import BeadSpring
+from hoomd_polymers.sim import Simulation
+from hoomd_polymers.library.polymers import LJChain
+import numpy as np
+import signac
+import unyt
 
 
 class MyProject(FlowProject):
@@ -101,9 +113,7 @@ def new_system(job):
     system.reference_length = ref_length
     system.reference_mass = ref_mass
     system.reference_energy = ref_energy
-
-    snapshot = system.to_hoomd_snapshot()
-    return snapshot
+    return system
 
 
 def new_forcefield(job):
@@ -140,16 +150,6 @@ def new_forcefield(job):
         name="NPT"
 )
 def NPT(job):
-    import hoomd_polymers
-    from hoomd_polymers.library.systems import Pack
-    from hoomd_polymers.forcefields import BeadSpring
-    from hoomd_polymers.sim import Simulation
-    from hoomd_polymers.library.polymers import LJChain
-    from cmeutils.signac_utils import (
-            check_equilibration, sample_job, get_sample
-    )
-    import numpy as np
-    import unyt
 
     with job:
         print("------------------------------------")
@@ -176,7 +176,8 @@ def NPT(job):
             shrink_steps = 0
         else:
             print("Creating new system...")
-            snapshot = new_system(job)
+            system = new_system(job)
+            snapshot = system.hoomd_snapshot
             pressure = job.sp.pressure
             shrink_steps = job.sp.shrink_steps
 
@@ -202,9 +203,9 @@ def NPT(job):
         job.doc.tau_p = job.sp.tau_p * sim.dt
         job.doc.tau_kT = job.sp.tau_kT * sim.dt
 
-        sim.reference_length = system.reference_length
-        sim.reference_mass = system.reference_mass
-        sim.reference_energy = system.reference_energy
+        sim.reference_length = job.doc.ref_length
+        sim.reference_mass = job.doc.ref_mass
+        sim.reference_energy = job.doc.ref_energy
 
         job.doc.real_timestep = sim.real_timestep.to("fs")
         job.doc.real_timestep_units = "fs"
@@ -292,8 +293,6 @@ def NPT(job):
 )
 def NVT(job):
     import gsd.hoomd
-    import hoomd_polymers
-    from hoomd_polymers.sim import Simulation
     from cmeutils.signac_utils import (
             check_equilibration, sample_job, get_sample
     )
@@ -323,7 +322,8 @@ def NVT(job):
             #TODO: How to handle n_steps for restart job?
         else:
             print("Creating new system...")
-            snapshot = new_system(job)
+            system = new_system(job)
+            snapshot = system.hoomd_snapshot
             target_box = system.target_box/job.doc.ref_length
             shrink_steps = job.sp.shrink_steps
 
@@ -345,6 +345,10 @@ def NVT(job):
             log_file_name=log_path,
             log_write_freq=job.sp.log_write_freq
         )
+
+        sim.reference_length = job.doc.ref_length
+        sim.reference_mass = job.doc.ref_mass
+        sim.reference_energy = job.doc.ref_energy
         sim.pickle_forcefield(job.fn("forcefield.pickle"))
         job.doc.tau_kT = job.sp.tau_kT * sim.dt
 
