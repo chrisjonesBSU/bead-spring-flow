@@ -68,6 +68,16 @@ class Fry(DefaultSlurmEnvironment):
 
 # Definition of project-related labels (classification)
 @MyProject.label
+def pressure_equilibrated(job):
+    return job.doc.pressure_eq
+
+
+@MyProject.label
+def volume_equilibrated(job):
+    return job.doc.volume_eq
+
+
+@MyProject.label
 def nvt_done(job):
     return job.doc.nvt_done
 
@@ -144,154 +154,12 @@ def new_forcefield(job):
     return bead_spring_ff.hoomd_forcefield
 
 
-@MyProject.post(npt_done)
+@MyProject.post(pressure_equilibrated)
 @MyProject.operation(
         directives={"ngpu": 1, "executable": "python -u"},
-        name="NPT"
+        name="pressure"
 )
-def NPT(job):
-
-    with job:
-        print("------------------------------------")
-        print("Running NPT Simulation...")
-        print("------------------------------------")
-        print("JOB ID NUMBER:")
-        print(job.id)
-        print("------------------------------------")
-        print("------------------------------------")
-
-        if job.isfile("restart_npt.gsd"):
-            print("Restarting from NPT trajectory...")
-            with gsd.hoomd.open("restart_npt.gsd") as traj:
-                snapshot = traj[-1]
-            pressure = job.sp.pressure
-            shrink_steps = 0
-            #TODO: How to handle n_steps for restart job?
-
-        elif job.isfile("restart_nvt.gsd"):
-            print("Restarting from NVT trajectory...")
-            with gsd.hoomd.open("restart_nvt.gsd") as traj:
-                snapshot = traj[-1]
-            pressure = job.doc.avg_pressure
-            shrink_steps = 0
-        else:
-            print("Creating new system...")
-            system = new_system(job)
-            snapshot = system.to_hoomd_snapshot()
-            pressure = job.sp.pressure
-            shrink_steps = job.sp.shrink_steps
-
-        if job.isfile("forcefield.pickle"):
-            f = open(job.fn("forcefield.pickle"), "rb")
-            hoomd_ff = pickle.load(f)
-        else:
-            hoomd_ff = new_forcefield(job)
-
-        gsd_path = job.fn("npt.gsd")
-        log_path = job.fn("npt.txt")
-
-        sim = Simulation(
-            initial_state=snapshot,
-            forcefield=hoomd_ff,
-            dt=job.sp.dt,
-            gsd_file_name=gsd_path,
-            log_file_name=log_path,
-            gsd_write_freq=job.sp.gsd_write_freq,
-            log_write_freq=job.sp.log_write_freq
-        )
-        sim.pickle_forcefield(job.fn("forcefield.pickle"))
-        job.doc.tau_p = job.sp.tau_p * sim.dt
-        job.doc.tau_kT = job.sp.tau_kT * sim.dt
-
-        sim.reference_length = job.doc.ref_length
-        sim.reference_mass = job.doc.ref_mass
-        sim.reference_energy = job.doc.ref_energy
-
-        job.doc.real_timestep = sim.real_timestep.to("fs")
-        job.doc.real_timestep_units = "fs"
-
-        print("----------------------")
-        print("Running shrink step...")
-        print("----------------------")
-        if shrink_steps:
-            print("Running update volume method...")
-            target_box = system.target_box/job.doc.ref_length
-            job.doc.target_box = target_box
-            kT_ramp = sim.temperature_ramp(
-                    n_steps=job.sp.shrink_steps,
-                    kT_start=job.sp.shrink_kT,
-                    kT_final=job.sp.kT
-            )
-            sim.run_update_volume(
-                    final_box_lengths=target_box,
-                    n_steps=job.sp.shrink_steps,
-                    period=job.sp.shrink_period,
-                    tau_kt=job.doc.tau_kT,
-                    kT=kT_ramp
-            )
-            job.doc.shrink_npt_done = True
-            print("Update volume run finished...")
-
-        print("Running NPT method...")
-        sim.run_NPT(
-                kT=job.sp.kT,
-                pressure=pressure,
-                n_steps=0,
-                tau_kt=job.doc.tau_kT,
-                tau_pressure=job.doc.tau_p
-        )
-        sim.method.thermalize_thermostat_and_barostat_dof()
-
-        sim.run_NPT(
-                kT=job.sp.kT,
-                pressure=pressure,
-                n_steps=job.sp.n_steps,
-                tau_kt=job.doc.tau_kT,
-                tau_pressure=job.doc.tau_p
-        )
-
-        shrink_cut = int(shrink_steps/job.sp.log_write_freq)
-        extra_runs = 0
-        equilibrated = False
-        while not equilibrated:
-            equilibrated = check_equilibration(
-                    job=job,
-                    filename="npt.txt",
-                    variable="volume",
-                    threshold_fraction=job.sp.eq_threshold,
-                    threshold_neff=job.sp.neff_samples
-            )
-            print("-----------------------------------------------------")
-            print(f"Not yet equilibrated. Starting run {extra_runs + 1}.")
-            print("-----------------------------------------------------")
-            sim.run_NPT(
-                    kT=job.sp.kT,
-                    pressure=pressure,
-                    n_steps=job.sp.extra_steps,
-                    tau_kt=job.doc.tau_kT,
-                    tau_pressure=job.doc.tau_p
-            )
-            extra_runs += 1
-        print("-------------------------------------")
-        print("Is equilibrated; starting sampling...")
-        print("-------------------------------------")
-        sample_job(job=job, filename="npt.txt", variable="volume")
-        eq_volume = get_sample(
-                job=job, filename="npt.txt", variable="volume"
-        )
-        job.doc.avg_vol = np.mean(eq_volume)
-        job.doc.vol_std = np.std(eq_volume)
-
-    job.doc.npt_done = True
-    print("Simulation completed...")
-
-
-@MyProject.post(nvt_done)
-@MyProject.operation(
-        directives={"ngpu": 1, "executable": "python -u"},
-        name="NVT"
-)
-def NVT(job):
+def pressure(job):
     import gsd.hoomd
     from cmeutils.signac_utils import (
             check_equilibration, sample_job, get_sample
@@ -307,16 +175,9 @@ def NVT(job):
         print(job.id)
         print("------------------------------------")
         print("------------------------------------")
-        #TODO: If both restarts exist?
-        if job.isfile("restart_npt.gsd"):
-            print("Restarting from NPT trajectory...")
-            with gsd.hoomd.open("restart_npt.gsd") as traj:
-                snapshot = traj[-1]
-            target_box = [job.doc.npt_box_edge]*3
-            shrink_steps = 1e6
-        elif job.isfile("restart_nvt.gsd"):
+        if job.isfile("restart_nvt.gsd"):
             print("Restarting from NVT trajectory...")
-            with gsd.hoomd.open("restart_nvt.gsd") as traj:
+            with gsd.hoomd.open(job.fn("restart_nvt.gsd")) as traj:
                 snapshot = traj[-1]
             shrink_steps = 0
             #TODO: How to handle n_steps for restart job?
@@ -375,7 +236,7 @@ def NVT(job):
             equilibrated = check_equilibration(
                     job=job,
                     filename="nvt.txt",
-                    variable="potential",
+                    variable="pressure",
                     threshold_fraction=job.sp.eq_threshold,
                     threshold_neff=job.sp.neff_samples
             )
@@ -391,22 +252,137 @@ def NVT(job):
         print("-------------------------------------")
         print("Is equilibrated; starting sampling...")
         print("-------------------------------------")
-        sample_job(job=job, filename="nvt.txt", variable="potential")
-        eq_pe = get_sample(
-                job=job, filename="nvt.txt", variable="potential"
-        )
-        job.doc.average_pe = np.mean(eq_pe)
-        job.doc.pe_std = np.std(eq_pe)
-        sample_job(job=job, filename="nvt_data.txt", variable="pressure")
+        sample_job(job=job, filename="nvt.txt", variable="pressure")
         eq_pressure = get_sample(
-                job=job, filename="nvt_data.txt", variable="pressure"
+                job=job, filename="nvt.txt", variable="pressure"
         )
         job.doc.avg_pressure = np.mean(eq_pressure)
         job.doc.std_pressure = np.std(eq_pressure)
 
         # Save restart.gsd
         sim.save_restart_gsd(job.fn("restart_nvt.gsd"))
-        job.doc.nvt_done = True
+        job.doc.pressure_eq = True
+        print("Simulation complieted...")
+
+
+@MyProject.post(volume_equilibrated)
+@MyProject.operation(
+        directives={"ngpu": 1, "executable": "python -u"},
+        name="volume"
+)
+def volume(job):
+    import gsd.hoomd
+    from cmeutils.signac_utils import (
+            check_equilibration, sample_job, get_sample
+    )
+    import numpy as np
+    import unyt
+
+    with job:
+        print("------------------------------------")
+        print("Running NPT Simulation...")
+        print("JOB ID NUMBER:")
+        print(job.id)
+        print("------------------------------------")
+        if job.isfile("restart_npt.gsd"):
+            print("Restarting from NPT trajectory...")
+            with gsd.hoomd.open(job.fn("restart_npt.gsd")) as traj:
+                snapshot = traj[-1]
+            shrink_steps = 0
+            #TODO: How to handle n_steps for restart job?
+        if job.isfile("restart_nvt.gsd"):
+            print("Restarting from NVT trajectory...")
+            with gsd.hoomd.open(job.fn("restart_nvt.gsd")) as traj:
+                snapshot = traj[-1]
+            shrink_steps = 0
+            pressure = job.doc.avg_pressure
+        else:
+            print("Creating new system...")
+            system = new_system(job)
+            snapshot = system.to_hoomd_snapshot()
+            target_box = system.target_box/job.doc.ref_length
+            shrink_steps = job.sp.shrink_steps
+            pressure = job.sp.pressure
+
+        if job.isfile("forcefield.pickle"):
+            f = open(job.fn("forcefield.pickle"), "rb")
+            hoomd_ff = pickle.load(f)
+        else:
+            hoomd_ff = new_forcefield(job)
+
+        gsd_path = job.fn("npt.gsd")
+        log_path = job.fn("npt.txt")
+
+        sim = Simulation(
+            initial_state=snapshot,
+            forcefield=hoomd_ff,
+            dt=job.sp.dt,
+            gsd_write_freq=job.sp.gsd_write_freq,
+            gsd_file_name=gsd_path,
+            log_file_name=log_path,
+            log_write_freq=job.sp.log_write_freq
+        )
+
+        sim.reference_length = job.doc.ref_length
+        sim.reference_mass = job.doc.ref_mass
+        sim.reference_energy = job.doc.ref_energy
+        sim.pickle_forcefield(job.fn("forcefield.pickle"))
+        job.doc.tau_kT = job.sp.tau_kT * sim.dt
+
+        if shrink_steps:
+            sim.run_update_volume(
+                    final_box_lengths=target_box,
+                    n_steps=shrink_steps,
+                    period=1,
+                    tau_kt=job.doc.tau_kT,
+                    kT=job.sp.kT
+            )
+            job.doc.npt_update_vol = True
+
+        # Run NPT
+        sim.run_NPT(
+                kT=job.sp.kT,
+                tau_kt=job.doc.tau_kT,
+                pressure=pressure,
+                tau_pressure=job.sp.tau_p,
+                n_steps=job.sp.n_steps,
+        )
+
+        shrink_cut = int(shrink_steps/job.sp.log_write_freq)
+        extra_runs = 0
+        equilibrated = False
+        while not equilibrated:
+            equilibrated = check_equilibration(
+                    job=job,
+                    filename="npt.txt",
+                    variable="volume",
+                    threshold_fraction=job.sp.eq_threshold,
+                    threshold_neff=job.sp.neff_samples
+            )
+            print("-----------------------------------------------------")
+            print(f"Not yet equilibrated. Starting run {extra_runs + 1}.")
+            print("-----------------------------------------------------")
+            sim.run_NPT(
+                    kT=job.sp.kT,
+                    tau_kt=job.doc.tau_kT,
+                    pressure=pressure,
+                    tau_pressure=job.sp.tau_p,
+                    n_steps=job.sp.extra_steps,
+            )
+            extra_runs += 1
+        print("-------------------------------------")
+        print("Is equilibrated; starting sampling...")
+        print("-------------------------------------")
+        sample_job(job=job, filename="npt.txt", variable="volume")
+        eq_volume = get_sample(
+                job=job, filename="npt.txt", variable="volume"
+        )
+        job.doc.avg_volume = np.mean(eq_volume)
+        job.doc.std_volume = np.std(eq_volume)
+
+        # Save restart.gsd
+        sim.save_restart_gsd(job.fn("restart_npt.gsd"))
+        job.doc.volume_eq = True
         print("Simulation complieted...")
 
 

@@ -24,7 +24,7 @@ def get_parameters():
 
     ### SYSTEM GENERATION PARAMETERS ###
     parameters["lengths"] = [30]
-    parameters["n_mols"] = [200]
+    parameters["n_mols"] = [50]
     parameters["bead_sequence"] = [["A"]]
     parameters["bond_lengths"] = [{"A-A": 1.1}] # nm
     parameters["bead_mass"] = [{"A": 450}]
@@ -38,39 +38,35 @@ def get_parameters():
 
     ### FORCEFIELD INFORMATION ###
     parameters["bead_types"] = [
-            [{"A": {"sigma": 1.0, "epsilon": 1.0}}],
+            [{"A": {"sigma": 1.0, "epsilon": 1.0}}]
     ]
     parameters["bond_types"] = [
-            [
-                {"A-A": {"k": 500, "r0":1.1}},
-            ],
+            [{"A-A": {"k": 500, "r0":1.1}}]
     ]
     parameters["angle_types"] = [
-            [
-                {"A-A-A": {"k": 250, "t0":2.2}},
-            ],
+            [{"A-A-A": {"k": 250, "t0":2.2}}]
     ]
     parameters["dihedral_types"] = [
-            [{}],
+            [{}]
     ]
 
     ### SIMULATION PARAMETERS ###
     parameters["dt"] = [0.0006]
-    parameters["tau_kt"] = [100]
-    parameters["tau_p"] = [500, 750, 1000, 1250]
+    parameters["tau_kT"] = [100]
+    parameters["tau_p"] = [1000]
     parameters["r_cut"] = [2.5]
     parameters["sim_seed"] = [42]
-    parameters["shrink_steps"] = [5e6]
+    parameters["shrink_steps"] = [2e6]
     parameters["shrink_period"] = [1000]
     parameters["shrink_kT"] = [6.0]
     parameters["gsd_write_freq"] = [int(5e5)]
     parameters["log_write_freq"] = [int(1e4)]
     parameters["kT"] = [6.0]
-    parameters["pressure"] = [1]
-    parameters["n_steps"] = [5e7]
-    parameters["extra_steps"] = [5e6]
-    parameters["neff_samples"] = [800]
-    parameters["eq_threshold"] = [0.50]
+    parameters["pressure"] = [None]
+    parameters["n_steps"] = [5e6]
+    parameters["extra_steps"] = [1e6]
+    parameters["neff_samples"] = [1]
+    parameters["eq_threshold"] = [0.05]
     return list(parameters.keys()), list(product(*parameters.values()))
 
 
@@ -84,6 +80,8 @@ def main():
         job.init()
         job.doc.setdefault("npt_done", False)
         job.doc.setdefault("nvt_done", False)
+        job.doc.setdefault("pressure_eq", False)
+        job.doc.setdefault("volume_eq", False)
 
 
 if __name__ == "__main__":
