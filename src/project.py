@@ -206,6 +206,12 @@ def pressure(job):
             log_file_name=log_path,
             log_write_freq=job.sp.log_write_freq
         )
+        sim.add_walls(
+                wall_axis=(1,0,0),
+                sigma=1.0,
+                epsilon=1.0,
+                r_cut=1.12,
+        )
 
         sim.reference_length = job.doc.ref_length
         sim.reference_mass = job.doc.ref_mass
@@ -236,7 +242,7 @@ def pressure(job):
             equilibrated = check_equilibration(
                     job=job,
                     filename="nvt.txt",
-                    variable="pressure",
+                    variable="potential_energy",
                     threshold_fraction=job.sp.eq_threshold,
                     threshold_neff=job.sp.neff_samples
             )

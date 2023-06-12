@@ -4,8 +4,9 @@ channels:
 dependencies:
   - foyer
   - freud
+  - gmso >= 0.10.0
   - gsd
-  - hoomd=3.8=*gpu*
+  - hoomd
   - jupyter
   - matplotlib
   - mbuild
@@ -15,11 +16,12 @@ dependencies:
   - pymbar
   - pytest
   - pytest-cov
-  - python=3.9
+  - python
   - rowan
   - signac
   - signac-flow
+  - symengine
+  - python-symengine
   - unyt
   - pip:
-      - git+https://github.com/cmelab/cmeutils.git@master
       - git+https://github.com/chrisjonesbsu/hoomd-polymers.git@add/shear

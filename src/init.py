@@ -23,8 +23,8 @@ def get_parameters():
     parameters = OrderedDict()
 
     ### SYSTEM GENERATION PARAMETERS ###
-    parameters["lengths"] = [30]
-    parameters["n_mols"] = [50]
+    parameters["lengths"] = [10, 15, 30, 60, 80, 100, 120, 200]
+    parameters["n_mols"] = [100]
     parameters["bead_sequence"] = [["A"]]
     parameters["bond_lengths"] = [{"A-A": 1.1}] # nm
     parameters["bead_mass"] = [{"A": 450}]
@@ -57,16 +57,16 @@ def get_parameters():
     parameters["r_cut"] = [2.5]
     parameters["sim_seed"] = [42]
     parameters["shrink_steps"] = [2e6]
-    parameters["shrink_period"] = [1000]
-    parameters["shrink_kT"] = [6.0]
+    parameters["shrink_period"] = [100]
+    parameters["shrink_kT"] = [7.0]
     parameters["gsd_write_freq"] = [int(5e4)]
     parameters["log_write_freq"] = [int(5e3)]
-    parameters["kT"] = [6.0, 3.0, 4.0, 5.0, 7.0, 8.0]
+    parameters["kT"] = [7.0]
     parameters["pressure"] = [None]
-    parameters["n_steps"] = [5e6]
-    parameters["extra_steps"] = [1e6]
-    parameters["neff_samples"] = [1]
-    parameters["eq_threshold"] = [0.05]
+    parameters["n_steps"] = [5e8]
+    parameters["extra_steps"] = [2e6]
+    parameters["neff_samples"] = [500]
+    parameters["eq_threshold"] = [0.50]
     return list(parameters.keys()), list(product(*parameters.values()))
 
 
